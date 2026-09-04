@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { CliError, type Config } from "./types";
 
 export type StagedDiff = { diff: string; files: string[]; omitted: number };
@@ -68,16 +69,16 @@ function isBinaryFile(file: string): boolean {
 }
 
 function command(args: string[], input?: string) {
-  const result = Bun.spawnSync({
-    cmd: args,
-    stdin: input ? new TextEncoder().encode(input) : undefined,
-    stdout: "pipe",
-    stderr: "pipe",
+  const [cmd, ...rest] = args;
+  const result = spawnSync(cmd!, rest, {
+    input: input ?? undefined,
+    stdio: ["pipe", "pipe", "pipe"],
+    encoding: "utf-8",
   });
   return {
-    ok: result.exitCode === 0,
-    stdout: new TextDecoder().decode(result.stdout).trimEnd(),
-    stderr: new TextDecoder().decode(result.stderr).trim(),
+    ok: result.status === 0,
+    stdout: (result.stdout ?? "").trimEnd(),
+    stderr: (result.stderr ?? "").trim(),
   };
 }
 

@@ -28,16 +28,14 @@
     "commitline": "./dist/index.js"
   },
   "files": [
-    "src",
     "dist"
   ],
   "type": "module",
-  "module": "src/index.ts",
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
-    "build": "bun build ./src/index.ts --target=bun --outfile dist/index.js",
+    "build": "bun build ./src/index.ts --target=node --outfile dist/index.js",
     "build:binary": "bun build ./src/index.ts --compile --outfile commitline",
     "prepack": "bun run build",
     "lint": "oxlint --deny-warnings",
@@ -60,9 +58,6 @@
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
   "lint-staged": {
     "*.{js,jsx,mjs,cjs,ts,tsx}": [
       "oxlint --fix",
@@ -71,6 +66,7 @@
     "*.{json,jsonc,md,yaml,yml}": "oxfmt --no-error-on-unmatched-pattern"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": ">=1.0.0",
+    "node": ">=18"
   }
 }

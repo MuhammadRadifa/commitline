@@ -144,10 +144,7 @@ export async function loadConfig(): Promise<Config | undefined> {
 export async function configure(): Promise<void> {
   const existing = await loadConfig();
   p.intro(pc.bgCyan(pc.black(" [commitline] Setup ")));
-  p.note(
-    "Your API key stays in a local file and is sent only to your selected provider.",
-    "[lock] Privacy",
-  );
+  p.log.info("Your API key stays in a local file and is sent only to your selected provider.");
 
   if (existing) {
     const fields = requirePrompt(

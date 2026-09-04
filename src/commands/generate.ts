@@ -197,10 +197,7 @@ export async function run(options: Options): Promise<void> {
       throw error;
     }
     const message = withCommitIcon(result.message, config.useIcons);
-    p.note(
-      pc.green(message),
-      result.fallback ? "Fallback commit message" : "Generated commit message",
-    );
+    p.log.success(message);
     if (result.fallback)
       p.log.warn("The provider returned no commit subject. Edit this fallback or regenerate it.");
     if (!validMessage(message))
