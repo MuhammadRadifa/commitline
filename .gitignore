@@ -5,6 +5,7 @@ node_modules
 out
 dist
 commitline
+cmt
 *.tgz
 
 # code coverage
