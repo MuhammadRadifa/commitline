@@ -1,0 +1,76 @@
+{
+  "name": "commitline",
+  "version": "0.1.0",
+  "description": "Generate Conventional Commit messages from staged changes using your own AI provider key (OpenAI, Anthropic, Gemini, or any OpenAI-compatible API).",
+  "keywords": [
+    "ai",
+    "anthropic",
+    "bun",
+    "cli",
+    "commit",
+    "conventional-commits",
+    "gemini",
+    "git",
+    "ollama",
+    "openai"
+  ],
+  "homepage": "https://github.com/MuhammadRadifa/commitline#readme",
+  "bugs": {
+    "url": "https://github.com/MuhammadRadifa/commitline/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MuhammadRadifa/commitline.git"
+  },
+  "bin": {
+    "cmt": "./dist/index.js",
+    "commitline": "./dist/index.js"
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "type": "module",
+  "module": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build ./src/index.ts --target=bun --outfile dist/index.js",
+    "build:binary": "bun build ./src/index.ts --compile --outfile commitline",
+    "prepack": "bun run build",
+    "lint": "oxlint --deny-warnings",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "check": "bun run fmt:check && bun run lint && bun run typecheck",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "husky": "9.1.7",
+    "lint-staged": "17.4.1",
+    "oxfmt": "0.66.0",
+    "oxlint": "1.81.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "lint-staged": {
+    "*.{js,jsx,mjs,cjs,ts,tsx}": [
+      "oxlint --fix",
+      "oxfmt --no-error-on-unmatched-pattern"
+    ],
+    "*.{json,jsonc,md,yaml,yml}": "oxfmt --no-error-on-unmatched-pattern"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
