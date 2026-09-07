@@ -3,7 +3,7 @@
 import { Command } from "commander";
 import * as p from "@clack/prompts";
 import { CliError } from "./types";
-import { configure } from "./config";
+import { configure, manageConvention } from "./config";
 import { run } from "./commands/generate";
 
 export async function main(): Promise<void> {
@@ -26,6 +26,27 @@ export async function main(): Promise<void> {
     );
 
   program.command("config").description("Create or replace the configuration").action(configure);
+  program
+    .command("convention")
+    .description("Manage commit convention rules and icons (enable/disable, edit, add custom)")
+    .option("--enable", "Enable convention enforcement")
+    .option("--disable", "Disable convention enforcement")
+    .option("--icons", "Enable commit icons")
+    .option("--no-icons", "Disable commit icons")
+    .option("--list", "List current convention rules")
+    .option("--reset", "Reset rules to defaults")
+    .option("--add <rule...>", "Add custom type (type[:description[:icon]])")
+    .action(async (options) =>
+      manageConvention({
+        enable: Boolean(options.enable),
+        disable: Boolean(options.disable),
+        icons: Boolean(options.icons),
+        noIcons: Boolean(options.noIcons),
+        list: Boolean(options.list),
+        reset: Boolean(options.reset),
+        add: options.add,
+      }),
+    );
   try {
     await program.parseAsync();
   } catch (error) {

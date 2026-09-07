@@ -60,7 +60,7 @@ async function generate(
   spinner: { message: (text: string) => void },
   hint?: string,
 ): Promise<{ message: string; fallback: boolean }> {
-  const system = buildSystemPrompt(config.provider, options);
+  const system = buildSystemPrompt(config.provider, options, config.convention);
   const user = buildUserPrompt(files, diff, hint);
   const req = buildRequest(config, system, user, options);
 
@@ -86,7 +86,11 @@ async function generate(
     ? streamResult.message || streamResult.thinking
     : extractPayload(config.provider, req.isOllama, payload);
 
-  const message = commitMessageFromResponse(rawMessage);
+  const convention = config.convention;
+  const message = commitMessageFromResponse(
+    rawMessage,
+    convention?.enabled === false ? [] : convention,
+  );
   if (message) return { message, fallback: false };
 
   if (rawMessage.length > 100) {
@@ -96,14 +100,20 @@ async function generate(
       if (retryResponse.ok) {
         const retryPayload = await retryResponse.json().catch(() => ({}));
         const retryRaw = extractPayload(config.provider, retry.isOllama, retryPayload);
-        const retryMessage = commitMessageFromResponse(retryRaw);
+        const retryMessage = commitMessageFromResponse(
+          retryRaw,
+          convention?.enabled === false ? [] : convention,
+        );
         if (retryMessage) return { message: retryMessage, fallback: false };
       }
     } catch {}
   }
 
+  const fallbackType = convention?.enabled === false ? "update" : "chore: update";
+  const fallbackBody = files.length === 1 ? files[0] : `${files.length} staged files`;
   return {
-    message: `chore: update ${files.length === 1 ? files[0] : `${files.length} staged files`}`,
+    message:
+      convention?.enabled === false ? `update ${fallbackBody}` : `${fallbackType} ${fallbackBody}`,
     fallback: true,
   };
 }
@@ -196,11 +206,11 @@ export async function run(options: Options): Promise<void> {
       spinner.stop("Generation failed");
       throw error;
     }
-    const message = withCommitIcon(result.message, config.useIcons);
+    const message = withCommitIcon(result.message, config.useIcons, config.convention);
     p.log.success(message);
     if (result.fallback)
       p.log.warn("The provider returned no commit subject. Edit this fallback or regenerate it.");
-    if (!validMessage(message))
+    if (config.convention?.enabled !== false && !validMessage(message, config.convention))
       p.log.warn("Generated subject does not match the expected Conventional Commit format.");
     if (options.dryRun) return;
     if (options.yes) return commitMessage(message);

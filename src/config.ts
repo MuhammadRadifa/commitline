@@ -5,7 +5,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import pc from "picocolors";
 import { z } from "zod";
-import { CliError, ConfigSchema, DEFAULT_MODELS, type Config, type Provider } from "./types";
+import {
+  CliError,
+  ConfigSchema,
+  ConventionSchema,
+  DEFAULT_CONVENTION_TYPES,
+  DEFAULT_MODELS,
+  type Config,
+  type Convention,
+  type Provider,
+} from "./types";
 
 const CONFIG_PATH = join(
   process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
@@ -141,165 +150,406 @@ export async function loadConfig(): Promise<Config | undefined> {
   }
 }
 
-export async function configure(): Promise<void> {
-  const existing = await loadConfig();
-  p.intro(pc.bgCyan(pc.black(" [commitline] Setup ")));
-  p.log.info("Your API key stays in a local file and is sent only to your selected provider.");
+export async function saveConfig(config: Config): Promise<void> {
+  const parsed = ConfigSchema.parse(config);
+  await mkdir(dirname(CONFIG_PATH), { recursive: true });
+  await writeFile(CONFIG_PATH, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_PATH, 0o600);
+}
 
-  if (existing) {
-    const fields = requirePrompt(
-      await p.multiselect({
-        message: "Select what to change",
+function formatConvention(current: Convention, useIcons = true): string {
+  const status = current.enabled ? "enabled" : "disabled";
+  const icons = useIcons ? "icons on" : "icons off";
+  const types = current.types
+    .map((t) =>
+      useIcons && t.icon
+        ? `${t.icon} ${t.type}${t.description ? ` — ${t.description}` : ""}`
+        : `${t.type}${t.description ? ` — ${t.description}` : ""}`,
+    )
+    .join("\n  ");
+  return `Convention ${status}, ${icons} (${current.types.length} types):\n  ${types}`;
+}
+
+function validateTypeName(value: string | undefined, taken: string[]): string | undefined {
+  const name = (value ?? "").trim().toLowerCase();
+  if (!name) return "A type name is required.";
+  if (!/^[a-z]+$/.test(name)) return "Use lowercase letters only (a-z).";
+  if (name.length > 20) return "Keep it under 20 characters.";
+  if (taken.includes(name)) return "This type already exists.";
+  return undefined;
+}
+
+async function promptAddType(taken: string[]): Promise<Convention["types"][number] | undefined> {
+  const type = requirePrompt(
+    await p.text({
+      message: "New type name (e.g. chore, feat, hotfix)",
+      validate: (value) => validateTypeName(value, taken),
+    }),
+  )
+    .trim()
+    .toLowerCase();
+  const description = requirePrompt(
+    await p.text({
+      message: `Description for "${type}"`,
+      initialValue: "",
+      validate: (value) => ((value ?? "").trim() ? undefined : "A description is required."),
+    }),
+  ).trim();
+  const icon = requirePrompt(
+    await p.text({
+      message: `Icon for "${type}" (optional, blank for none)`,
+      initialValue: "",
+    }),
+  ).trim();
+  return icon ? { type, description, icon } : { type, description };
+}
+
+export async function promptConvention(
+  current?: Convention,
+  currentUseIcons = false,
+): Promise<{ convention: Convention; useIcons: boolean }> {
+  let draft: Convention = current
+    ? ConventionSchema.parse(structuredClone(current))
+    : ConventionSchema.parse({ enabled: true, types: DEFAULT_CONVENTION_TYPES });
+  let useIcons = currentUseIcons;
+
+  p.note(
+    "Enforced:\n  feat: add user authentication\n  fix(auth): handle expired tokens\n\nNot enforced:\n  any message, e.g. updated stuff",
+    "Conventional Commits",
+  );
+  draft.enabled = requirePrompt(
+    await p.confirm({
+      message: "Enforce Conventional Commits?",
+      initialValue: draft.enabled,
+    }),
+  );
+
+  while (true) {
+    p.log.message(formatConvention(draft, useIcons));
+    const action = requirePrompt(
+      await p.select({
+        message: "Convention rules",
         options: [
-          { value: "provider", label: "Provider", hint: existing.provider },
-          { value: "apiKey", label: "API Key", hint: "***" },
-          { value: "model", label: "Model", hint: existing.model },
-          ...(existing.provider === "compatible"
-            ? [{ value: "baseUrl" as const, label: "Base URL", hint: existing.baseUrl ?? "" }]
-            : []),
-          { value: "useIcons", label: "Use Icons", hint: existing.useIcons ? "yes" : "no" },
+          {
+            value: "toggle",
+            label: draft.enabled ? "Disable convention" : "Enable convention",
+            hint: "Turn enforcement on/off",
+          },
+          {
+            value: "icons",
+            label: useIcons ? "Disable icons" : "Enable icons",
+            hint: useIcons ? "No icon before message" : "e.g. ✨ feat: add login",
+          },
+          { value: "add", label: "Add custom type", hint: "e.g. hotfix, wip, security" },
+          { value: "edit", label: "Edit rule", hint: "Change description or icon" },
+          { value: "remove", label: "Remove type", hint: "Delete one or more types" },
+          {
+            value: "reset",
+            label: "Reset to defaults",
+            hint: `${DEFAULT_CONVENTION_TYPES.length} built-in types`,
+          },
+          { value: "done", label: "Done", hint: "Save and continue" },
         ],
-        required: false,
+        initialValue: "done",
       }),
     );
 
-    if (!fields.length) {
-      p.outro("Nothing changed.");
-      return;
+    if (action === "done") break;
+
+    if (action === "toggle") {
+      draft.enabled = !draft.enabled;
+      continue;
     }
 
-    let provider = existing.provider;
-    let apiKey = existing.apiKey;
-    let baseUrl = existing.baseUrl;
-    let model = existing.model;
-    let useIcons = existing.useIcons;
+    if (action === "icons") {
+      useIcons = !useIcons;
+      continue;
+    }
 
-    if (fields.includes("provider")) {
-      provider = requirePrompt(
-        await p.select<Provider>({
-          message: "Select your AI provider",
-          options: [
-            { value: "openai", label: "[O] OpenAI", hint: "GPT models through api.openai.com" },
-            {
-              value: "anthropic",
-              label: "[A] Anthropic",
-              hint: "Claude models through api.anthropic.com",
-            },
-            {
-              value: "gemini",
-              label: "[G] Google Gemini",
-              hint: "Gemini models through Google AI Studio",
-            },
-            {
-              value: "compatible",
-              label: "[>] Compatible API",
-              hint: "Ollama, LM Studio, or another compatible server",
-            },
-          ],
-          initialValue: existing.provider,
-        }),
-      );
-      if (provider !== existing.provider) {
-        baseUrl = provider === "compatible" ? baseUrl : undefined;
-        fields.push("model");
+    if (action === "reset") {
+      draft.types = structuredClone(DEFAULT_CONVENTION_TYPES);
+      p.log.success("Restored default rules.");
+      continue;
+    }
+
+    if (action === "add") {
+      const added = await promptAddType(draft.types.map((t) => t.type));
+      if (added) {
+        draft.types.push(added);
+        p.log.success(`Added "${added.type}".`);
       }
+      continue;
     }
 
-    if (fields.includes("apiKey")) {
-      const entered = requirePrompt(
-        await p.password({
-          message: "API key (leave blank to keep current key)",
-          validate: (value) =>
-            (value ?? "").trim() || apiKey ? undefined : "An API key is required.",
+    if (action === "edit") {
+      const target = requirePrompt(
+        await p.select({
+          message: "Select a rule to edit",
+          options: draft.types.map((t) => ({
+            value: t.type,
+            label: `${t.icon ? `${t.icon} ` : ""}${t.type}`,
+            hint: t.description,
+          })),
         }),
       );
-      if (entered.trim()) apiKey = entered.trim();
-    }
-
-    if (fields.includes("baseUrl") && provider === "compatible") {
-      baseUrl = requirePrompt(
+      const entry = draft.types.find((t) => t.type === target);
+      if (!entry) continue;
+      entry.description = requirePrompt(
         await p.text({
-          message: "OpenAI-compatible base URL",
-          initialValue: baseUrl || "http://localhost:11434/v1",
-          validate: (value) =>
-            z.url().safeParse(value ?? "").success ? undefined : "Enter a valid URL.",
+          message: `Description for "${entry.type}"`,
+          initialValue: entry.description,
+          validate: (value) => ((value ?? "").trim() ? undefined : "A description is required."),
+        }),
+      ).trim();
+      const icon = requirePrompt(
+        await p.text({
+          message: `Icon for "${entry.type}" (blank to remove)`,
+          initialValue: entry.icon ?? "",
+        }),
+      ).trim();
+      if (icon) entry.icon = icon;
+      else delete entry.icon;
+      continue;
+    }
+
+    if (action === "remove") {
+      if (draft.types.length <= 1) {
+        p.log.warn("Keep at least one type.");
+        continue;
+      }
+      const doomed = requirePrompt(
+        await p.multiselect({
+          message: "Select types to remove",
+          options: draft.types.map((t) => ({ value: t.type, label: t.type, hint: t.description })),
+          required: true,
         }),
       );
+      if (doomed.length >= draft.types.length) {
+        p.log.warn("Keep at least one type.");
+        continue;
+      }
+      draft.types = draft.types.filter((t) => !doomed.includes(t.type));
+      p.log.success(`Removed ${doomed.join(", ")}.`);
     }
+  }
 
-    if (fields.includes("model")) {
-      model = await chooseModel(provider, apiKey, baseUrl, model);
-    }
+  return { convention: ConventionSchema.parse(draft), useIcons };
+}
 
-    if (fields.includes("useIcons")) {
-      useIcons = requirePrompt(
-        await p.confirm({
-          message: "Add an icon before each commit message?",
-          initialValue: useIcons,
-        }),
-      );
-    }
+export type ConventionActionOptions = {
+  enable?: boolean;
+  disable?: boolean;
+  list?: boolean;
+  reset?: boolean;
+  icons?: boolean;
+  noIcons?: boolean;
+  add?: string[];
+};
 
-    const config = ConfigSchema.parse({ provider, apiKey, model, baseUrl, ignore: [], useIcons });
-    await mkdir(dirname(CONFIG_PATH), { recursive: true });
-    await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-    await chmod(CONFIG_PATH, 0o600);
-    p.outro(`${pc.green("[ok] Configuration saved")} ${pc.dim(CONFIG_PATH)}`);
+export async function manageConvention(options: ConventionActionOptions = {}): Promise<void> {
+  let config = await loadConfig();
+  if (!config) {
+    p.log.error("No configuration found. Run `commitline config` first.");
+    process.exit(1);
+  }
+  const current: Convention = config.convention ?? {
+    enabled: true,
+    types: DEFAULT_CONVENTION_TYPES,
+  };
+
+  if (options.list) {
+    p.log.message(formatConvention(current, config.useIcons));
     return;
   }
 
+  if (options.reset) {
+    config = {
+      ...config,
+      convention: { enabled: current.enabled, types: structuredClone(DEFAULT_CONVENTION_TYPES) },
+    };
+    await saveConfig(config);
+    p.log.success("Convention reset to defaults.");
+    p.log.message(formatConvention(config.convention, config.useIcons));
+    return;
+  }
+
+  if (options.enable || options.disable) {
+    config = { ...config, convention: { ...current, enabled: Boolean(options.enable) } };
+    await saveConfig(config);
+    p.log.success(`Convention ${config.convention.enabled ? "enabled" : "disabled"}.`);
+    return;
+  }
+
+  if (options.icons || options.noIcons) {
+    config = { ...config, useIcons: Boolean(options.icons) };
+    await saveConfig(config);
+    p.log.success(`Icons ${config.useIcons ? "enabled" : "disabled"}.`);
+    return;
+  }
+
+  if (options.add?.length) {
+    const types = [...current.types];
+    for (const raw of options.add) {
+      const [name = "", description = "", icon = ""] = raw.split(":").map((s) => s.trim());
+      const error = validateTypeName(
+        name.toLowerCase(),
+        types.map((t) => t.type),
+      );
+      if (error) {
+        p.log.error(`Skipped "${raw}": ${error} Expected type[:description[:icon]].`);
+        continue;
+      }
+      types.push(
+        icon
+          ? { type: name.toLowerCase(), description: description || name, icon }
+          : { type: name.toLowerCase(), description: description || name },
+      );
+    }
+    config = { ...config, convention: { ...current, types } };
+    await saveConfig(ConfigSchema.parse(config));
+    p.log.success("Custom type(s) added.");
+    p.log.message(formatConvention(config.convention, config.useIcons));
+    return;
+  }
+
+  p.intro(pc.bgCyan(pc.black(" [commitline] Convention ")));
+  const next = await promptConventionSection(current, config.useIcons);
+  await saveConfig({ ...config, useIcons: next.useIcons, convention: next.convention });
+  p.outro(`${pc.green("[ok] Convention saved")} ${pc.dim(CONFIG_PATH)}`);
+}
+
+const PROVIDER_OPTIONS = [
+  { value: "openai" as const, label: "[O] OpenAI", hint: "GPT models through api.openai.com" },
+  {
+    value: "anthropic" as const,
+    label: "[A] Anthropic",
+    hint: "Claude models through api.anthropic.com",
+  },
+  {
+    value: "gemini" as const,
+    label: "[G] Google Gemini",
+    hint: "Gemini models through Google AI Studio",
+  },
+  {
+    value: "compatible" as const,
+    label: "[>] Compatible API",
+    hint: "Ollama, LM Studio, or another compatible server",
+  },
+];
+
+type AiDraft = Pick<Config, "provider" | "apiKey" | "baseUrl" | "model">;
+
+async function promptAiConfiguration(current?: AiDraft): Promise<AiDraft> {
   const provider = requirePrompt(
     await p.select<Provider>({
       message: "Select your AI provider",
-      options: [
-        { value: "openai", label: "[O] OpenAI", hint: "GPT models through api.openai.com" },
-        {
-          value: "anthropic",
-          label: "[A] Anthropic",
-          hint: "Claude models through api.anthropic.com",
-        },
-        {
-          value: "gemini",
-          label: "[G] Google Gemini",
-          hint: "Gemini models through Google AI Studio",
-        },
-        {
-          value: "compatible",
-          label: "[>] Compatible API",
-          hint: "Ollama, LM Studio, or another compatible server",
-        },
-      ],
-      initialValue: "openai",
+      options: PROVIDER_OPTIONS,
+      initialValue: current?.provider ?? "openai",
     }),
   );
+  const isFresh = !current;
   const enteredApiKey = requirePrompt(
     await p.password({
-      message: "API key",
-      validate: (value) => ((value ?? "").trim() ? undefined : "An API key is required."),
+      message: isFresh ? "API key" : "API key (leave blank to keep current key)",
+      validate: (value) =>
+        (value ?? "").trim() || (!isFresh && current?.apiKey)
+          ? undefined
+          : "An API key is required.",
     }),
   );
-  const apiKey = enteredApiKey.trim();
+  const apiKey = enteredApiKey.trim() || (!isFresh ? (current?.apiKey ?? "") : "");
   const baseUrl =
     provider === "compatible"
       ? requirePrompt(
           await p.text({
             message: "OpenAI-compatible base URL",
-            initialValue: "http://localhost:11434/v1",
+            initialValue:
+              current?.provider === "compatible"
+                ? (current?.baseUrl ?? "")
+                : "http://localhost:11434/v1",
             validate: (value) =>
               z.url().safeParse(value ?? "").success ? undefined : "Enter a valid URL.",
           }),
         )
       : undefined;
-  const model = await chooseModel(provider, apiKey, baseUrl);
+  const model = await chooseModel(provider, apiKey, baseUrl, current?.model);
+  return { provider, apiKey, baseUrl, model };
+}
+
+async function promptConventionSection(
+  currentConvention?: Convention,
+  currentUseIcons = false,
+): Promise<{ convention: Convention; useIcons: boolean }> {
+  p.note(
+    "With icons:\n  ✨ feat: add user authentication\n  🐛 fix: resolve login timeout\n\nWithout icons:\n  feat: add user authentication\n  fix: resolve login timeout",
+    "Commit icons",
+  );
   const useIcons = requirePrompt(
     await p.confirm({
       message: "Add an icon before each commit message?",
-      initialValue: false,
+      initialValue: currentUseIcons,
     }),
   );
-  const config = ConfigSchema.parse({ provider, apiKey, model, baseUrl, ignore: [], useIcons });
-  await mkdir(dirname(CONFIG_PATH), { recursive: true });
-  await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-  await chmod(CONFIG_PATH, 0o600);
+  return promptConvention(currentConvention, useIcons);
+}
+
+export async function configure(): Promise<void> {
+  const existing = await loadConfig();
+  p.intro(pc.bgCyan(pc.black(" [commitline] Setup ")));
+  p.log.info("Your API key stays in a local file and is sent only to your selected provider.");
+
+  if (!existing) {
+    const ai = await promptAiConfiguration();
+    const section = await promptConventionSection(undefined, false);
+    await saveConfig(
+      ConfigSchema.parse({
+        ...ai,
+        ignore: [],
+        useIcons: section.useIcons,
+        convention: section.convention,
+      }),
+    );
+    p.outro(`${pc.green("[ok] Configuration saved")} ${pc.dim(CONFIG_PATH)}`);
+    return;
+  }
+
+  let draft: Config = existing;
+  while (true) {
+    const conventionHint =
+      draft.convention?.enabled === false
+        ? "disabled"
+        : `${draft.convention?.types.length ?? 0} types${draft.useIcons ? ", icons on" : ", icons off"}`;
+    const section = requirePrompt(
+      await p.select({
+        message: "Select configuration",
+        options: [
+          {
+            value: "ai",
+            label: "AI Configuration",
+            hint: `${draft.provider} / ${draft.model}`,
+          },
+          { value: "convention", label: "Commit Convention", hint: conventionHint },
+          { value: "done", label: "Done", hint: "Save and exit" },
+        ],
+        initialValue: "done",
+      }),
+    );
+
+    if (section === "done") break;
+
+    if (section === "ai") {
+      const ai = await promptAiConfiguration(draft);
+      draft = ConfigSchema.parse({ ...draft, ...ai });
+      await saveConfig(draft);
+      p.log.success("AI configuration saved.");
+      continue;
+    }
+
+    const next = await promptConventionSection(draft.convention, draft.useIcons);
+    draft = ConfigSchema.parse({ ...draft, useIcons: next.useIcons, convention: next.convention });
+    await saveConfig(draft);
+    p.log.success("Commit convention saved.");
+  }
+
   p.outro(`${pc.green("[ok] Configuration saved")} ${pc.dim(CONFIG_PATH)}`);
 }

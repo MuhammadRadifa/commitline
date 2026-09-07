@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { buildRequest, buildRetryRequest } from "../providers/request";
 import { buildSystemPrompt } from "../utils/prompt";
-import type { Config, Options } from "../types";
+import { DEFAULT_CONVENTION_TYPES, type Config, type Options } from "../types";
 
 const options: Options = { dryRun: false, yes: false, body: false, breaking: false };
 
@@ -13,6 +13,7 @@ function config(provider: Config["provider"], overrides: Partial<Config> = {}): 
     baseUrl: provider === "compatible" ? "http://localhost:11434/v1" : undefined,
     ignore: [],
     useIcons: false,
+    convention: { enabled: true, types: DEFAULT_CONVENTION_TYPES },
     ...overrides,
   };
 }

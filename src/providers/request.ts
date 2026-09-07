@@ -119,9 +119,15 @@ export function buildRequest(
 }
 
 export function buildRetryRequest(config: Config, diff: string, options: Options): ProviderRequest {
-  const system = `Output ONLY a JSON object: {"message_commits":"<the commit message>"}. No other text. The commit message is a Conventional Commit: type: description. Example: {"message_commits":"feat: add login"}.${
-    options.body ? " Include a blank line then a concise bullet-list body." : ""
-  }`;
+  const enabled = config.convention?.enabled !== false;
+  const firstType = enabled ? (config.convention?.types[0]?.type ?? "feat") : undefined;
+  const system = enabled
+    ? `Output ONLY a JSON object: {"message_commits":"<the commit message>"}. No other text. The commit message is a Conventional Commit: type: description. Example: {"message_commits":"${firstType}: add login"}.${
+        options.body ? " Include a blank line then a concise bullet-list body." : ""
+      }`
+    : `Output ONLY a JSON object: {"message_commits":"<the commit message>"}. No other text. The commit message is a single concise subject line.${
+        options.body ? " Include a blank line then a concise bullet-list body." : ""
+      }`;
   const request = buildRequest(config, system, diff.slice(0, 15_000), options);
   if (!request.isOllama && (config.provider === "openai" || config.provider === "compatible")) {
     return { ...request, body: { ...request.body, stream: false } };

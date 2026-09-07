@@ -1,4 +1,5 @@
-import { CONVENTIONAL_COMMIT } from "../commit";
+import { conventionPattern, conventionTypes } from "../commit";
+import type { Convention } from "../types";
 
 const REASONING_PATTERNS = [
   /^we are given/i,
@@ -63,7 +64,16 @@ export function isPlaceholderCommit(message: string): boolean {
   return false;
 }
 
-export function commitMessageFromResponse(message: string): string {
+export function commitMessageFromResponse(
+  message: string,
+  typesOrConvention?: string[] | Pick<Convention, "types">,
+): string {
+  const types = Array.isArray(typesOrConvention)
+    ? typesOrConvention
+    : conventionTypes(typesOrConvention ?? null);
+  const pattern = conventionPattern(types);
+  const escaped = types.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const subjectRegex = new RegExp(`(?:${escaped})(?:\\([a-z0-9._/-]+\\))?!?: [^\\n\`]+`, "i");
   const cleaned = message
     .trim()
     .replace(/^```(?:\w+)?\s*|```$/g, "")
@@ -97,12 +107,7 @@ export function commitMessageFromResponse(message: string): string {
     } catch {}
   }
 
-  const subject =
-    cleaned
-      .match(
-        /(?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([a-z0-9._/-]+\))?!?: [^\n`]+/i,
-      )?.[0]
-      .trim() || "";
+  const subject = cleaned.match(subjectRegex)?.[0].trim() || "";
   if (subject && !isPlaceholderCommit(subject)) return stripReasoning(subject);
 
   const lines = cleaned
@@ -111,7 +116,7 @@ export function commitMessageFromResponse(message: string): string {
     .filter(Boolean);
   for (const line of lines) {
     if (isReasoningLine(line)) continue;
-    if (CONVENTIONAL_COMMIT.test(line)) return stripReasoning(line);
+    if (pattern.test(line)) return stripReasoning(line);
     if (
       line.length < 80 &&
       line.length >= 5 &&

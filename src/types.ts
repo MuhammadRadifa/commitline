@@ -2,6 +2,43 @@ import { z } from "zod";
 
 export const ProviderSchema = z.enum(["openai", "anthropic", "gemini", "compatible"]);
 
+export const ConventionTypeSchema = z.object({
+  type: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20)
+    .regex(/^[a-zA-Z]+$/, "Use letters only.")
+    .transform((value) => value.toLowerCase()),
+  description: z.string().trim().min(1).max(120).default(""),
+  icon: z.string().trim().max(10).optional(),
+});
+
+export const DEFAULT_CONVENTION_TYPES: z.infer<typeof ConventionTypeSchema>[] = [
+  { type: "feat", description: "A new feature", icon: "✨" },
+  { type: "fix", description: "A bug fix", icon: "🐛" },
+  { type: "docs", description: "Documentation changes", icon: "📝" },
+  { type: "style", description: "Code style changes", icon: "💄" },
+  { type: "refactor", description: "Code refactoring", icon: "♻️" },
+  { type: "perf", description: "Performance improvements", icon: "⚡" },
+  { type: "test", description: "Test changes", icon: "✅" },
+  { type: "build", description: "Build system changes", icon: "📦" },
+  { type: "ci", description: "CI changes", icon: "👷" },
+  { type: "chore", description: "Other changes", icon: "🔧" },
+  { type: "revert", description: "Revert a commit", icon: "⏪" },
+];
+
+export const ConventionSchema = z.object({
+  enabled: z.boolean().default(true),
+  types: z
+    .array(ConventionTypeSchema)
+    .min(1, "Add at least one type.")
+    .default(DEFAULT_CONVENTION_TYPES),
+});
+
+export type ConventionType = z.infer<typeof ConventionTypeSchema>;
+export type Convention = z.infer<typeof ConventionSchema>;
+
 export const ConfigSchema = z
   .object({
     provider: ProviderSchema,
@@ -10,6 +47,10 @@ export const ConfigSchema = z
     baseUrl: z.url().optional(),
     ignore: z.array(z.string()).default([]),
     useIcons: z.boolean().default(false),
+    convention: ConventionSchema.default({
+      enabled: true,
+      types: DEFAULT_CONVENTION_TYPES,
+    }),
   })
   .superRefine((config, context) => {
     if (config.provider === "compatible" && !config.baseUrl) {
