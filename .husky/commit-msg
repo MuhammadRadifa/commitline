@@ -1,0 +1,15 @@
+MSG_FILE="$1"
+MSG=$(head -n1 "$MSG_FILE")
+
+if echo "$MSG" | grep -Eq '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?(!)?: .+'; then
+  exit 0
+fi
+
+echo "Invalid commit message: \"$MSG\"" >&2
+echo "" >&2
+echo "Use Conventional Commits so release-please can auto-version, e.g.:" >&2
+echo "  feat: add ollama provider" >&2
+echo "  fix(scope): handle empty diff" >&2
+echo "  feat!: drop node 16" >&2
+echo "  fix: correct parsing" >&2
+exit 1
