@@ -181,8 +181,8 @@ src/
 ## Development
 
 ```bash
-git clone https://github.com/MuhammadRadifa/commit-line.git
-cd commit-line
+git clone https://github.com/MuhammadRadifa/commitline.git
+cd commitline
 bun install
 
 bun run start          # Run the CLI

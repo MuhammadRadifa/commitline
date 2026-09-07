@@ -14,14 +14,14 @@
     "ollama",
     "openai"
   ],
-  "homepage": "https://github.com/MuhammadRadifa/commit-line#readme",
+  "homepage": "https://github.com/MuhammadRadifa/commitline#readme",
   "bugs": {
-    "url": "https://github.com/MuhammadRadifa/commit-line/issues"
+    "url": "https://github.com/MuhammadRadifa/commitline/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MuhammadRadifa/commit-line.git"
+    "url": "git+https://github.com/MuhammadRadifa/commitline.git"
   },
   "bin": {
     "cmt": "dist/index.js",
