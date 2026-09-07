@@ -1,6 +1,6 @@
 {
   "name": "@radifa/commitline",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Generate Conventional Commit messages from staged changes using your own AI provider key (OpenAI, Anthropic, Gemini, or any OpenAI-compatible API).",
   "keywords": [
     "ai",
