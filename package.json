@@ -1,5 +1,5 @@
 {
-  "name": "commitline",
+  "name": "@radifa/commitline",
   "version": "0.1.0",
   "description": "Generate Conventional Commit messages from staged changes using your own AI provider key (OpenAI, Anthropic, Gemini, or any OpenAI-compatible API).",
   "keywords": [
@@ -14,18 +14,18 @@
     "ollama",
     "openai"
   ],
-  "homepage": "https://github.com/MuhammadRadifa/commitline#readme",
+  "homepage": "https://github.com/MuhammadRadifa/commit-line#readme",
   "bugs": {
-    "url": "https://github.com/MuhammadRadifa/commitline/issues"
+    "url": "https://github.com/MuhammadRadifa/commit-line/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MuhammadRadifa/commitline.git"
+    "url": "git+https://github.com/MuhammadRadifa/commit-line.git"
   },
   "bin": {
-    "cmt": "./dist/index.js",
-    "commitline": "./dist/index.js"
+    "cmt": "dist/index.js",
+    "commitline": "dist/index.js"
   },
   "files": [
     "dist"

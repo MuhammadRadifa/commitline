@@ -17,13 +17,13 @@ commitline never commits without review unless you pass `--yes`. Your API key st
 
 ```bash
 # Via npm (recommended)
-npm install -g commitline
+npm install -g @radifa/commitline
 
 # Via Bun
-bun install -g commitline
+bun install -g @radifa/commitline
 
 # Or run directly without installing
-npx commitline
+npx @radifa/commitline
 ```
 
 **Requirements:** [Bun](https://bun.sh) 1.0+ and [Git](https://git-scm.com).
@@ -181,8 +181,8 @@ src/
 ## Development
 
 ```bash
-git clone https://github.com/MuhammadRadifa/commitline.git
-cd commitline
+git clone https://github.com/MuhammadRadifa/commit-line.git
+cd commit-line
 bun install
 
 bun run start          # Run the CLI
