@@ -72,3 +72,82 @@ export function buildSystemPrompt(
 export function buildUserPrompt(files: string[], diff: string, hint?: string): string {
   return `Changed files:\n${files.join("\n")}\n\nStaged diff:\n${diff}${hint ? `\n\nAdditional guidance: ${hint}` : ""}`;
 }
+
+const PR_JSON_INSTRUCTION =
+  'Return ONLY a JSON object: {"pr_title":"<single-line PR title>","pr_body":"<markdown PR description>"}. No other text.';
+
+const PR_TEXT_INSTRUCTION = [
+  "Output the PR suggestion as:",
+  "Title: <single-line PR title>",
+  "Body:",
+  "<markdown PR description>",
+  "No other text.",
+].join("\n");
+
+export function buildPrSystemPrompt(
+  provider: string,
+  convention?: Convention | null,
+  currentBranch?: string,
+  baseBranch?: string,
+): string {
+  const structured = isStructuredProvider(provider);
+  const enabled = !convention || convention.enabled !== false;
+  const allowed = enabled
+    ? (convention?.types.map((t) => t.type).join(", ") ??
+      "feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert")
+    : "";
+  const details = enabled ? describeConvention(convention ?? null) : "";
+  const scope =
+    currentBranch && baseBranch
+      ? `The PR merges "${currentBranch}" into "${baseBranch}".`
+      : "The PR merges the current branch into its base branch.";
+  const lines = enabled
+    ? [
+        "Summarize the branch below into one GitHub pull request title and description.",
+        scope,
+        `The title MUST be one Conventional Commit subject. Allowed types: ${allowed}.`,
+        details ? `Type meanings: ${details}.` : "",
+        "Title format: type: description or type(scope): description. Keep it under 72 characters.",
+        "Describe the actual behavior change, not file names. Complete the title; never end with an ellipsis.",
+        "The body must be markdown with sections: Summary, Changes (bullet list), Test plan (bullet list). Keep it concise.",
+        "Derive everything from the branch commits and diff. Do not invent changes.",
+        structured ? PR_JSON_INSTRUCTION : PR_TEXT_INSTRUCTION,
+      ]
+    : [
+        "Summarize the branch below into one GitHub pull request title and description.",
+        scope,
+        "The title must be a single concise subject line under 72 characters.",
+        "Describe the actual behavior change, not file names.",
+        "The body must be markdown with sections: Summary, Changes (bullet list), Test plan (bullet list). Keep it concise.",
+        "Derive everything from the branch commits and diff. Do not invent changes.",
+        structured ? PR_JSON_INSTRUCTION : PR_TEXT_INSTRUCTION,
+      ];
+  return lines.filter(Boolean).join(structured ? " " : "\n");
+}
+
+export function buildPrUserPrompt(
+  commits: { hash: string; subject: string; body: string }[],
+  files: string[],
+  stat: string,
+  diff: string,
+  hint?: string,
+): string {
+  const log = commits
+    .map(
+      (c) =>
+        `- ${c.subject}${c.body ? `\n  ${c.body.split("\n").join("\n  ")}` : ""} (${c.hash.slice(0, 7)})`,
+    )
+    .join("\n");
+  return [
+    `Branch commits (${commits.length}):`,
+    log,
+    "",
+    `Changed files:\n${files.length ? files.join("\n") : "(none)"}`,
+    "",
+    stat ? `Diff stat:\n${stat}\n` : "",
+    `Branch diff:\n${diff}`,
+    hint ? `\nAdditional guidance: ${hint}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

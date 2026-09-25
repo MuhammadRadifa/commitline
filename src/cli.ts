@@ -5,6 +5,7 @@ import * as p from "@clack/prompts";
 import { CliError } from "./types";
 import { configure, manageConvention } from "./config";
 import { run } from "./commands/generate";
+import { runPr } from "./commands/pr";
 
 export async function main(): Promise<void> {
   const program = new Command()
@@ -26,6 +27,23 @@ export async function main(): Promise<void> {
     );
 
   program.command("config").description("Create or replace the configuration").action(configure);
+  program
+    .command("pr")
+    .description("Suggest a PR title and description from the current branch history")
+    .option("--base <branch>", "Base branch to compare against (default: auto-detect main/master)")
+    .option("--dry-run", "Print the suggestion without interactive review")
+    .option("--json", "Print the suggestion as JSON")
+    .option("-y, --yes", "Print the suggestion without interactive review")
+    .option("--regen-hint <text>", "Add guidance for generation")
+    .action(async (options) =>
+      runPr({
+        base: options.base,
+        dryRun: Boolean(options.dryRun),
+        json: Boolean(options.json),
+        yes: Boolean(options.yes),
+        regenHint: options.regenHint,
+      }),
+    );
   program
     .command("convention")
     .description("Manage commit convention rules and icons (enable/disable, edit, add custom)")

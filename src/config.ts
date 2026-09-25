@@ -220,7 +220,7 @@ export async function promptConvention(
   draft.enabled = requirePrompt(
     await p.confirm({
       message: "Enforce Conventional Commits?",
-      initialValue: draft.enabled,
+      initialValue: true,
     }),
   );
 

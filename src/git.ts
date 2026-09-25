@@ -133,3 +133,100 @@ export function commit(message: string): string {
   if (!result.ok) throw new CliError(result.stderr || "git commit failed.");
   return command(["git", "rev-parse", "--short", "HEAD"]).stdout;
 }
+
+export type BranchCommit = { hash: string; subject: string; body: string };
+
+export type BranchHistory = {
+  current: string;
+  base: string;
+  commits: BranchCommit[];
+  files: string[];
+  stat: string;
+  diff: string;
+};
+
+export function getCurrentBranch(): string {
+  if (!command(["git", "rev-parse", "--is-inside-work-tree"]).ok)
+    throw new CliError("Not inside a Git working tree.");
+  const result = command(["git", "branch", "--show-current"]);
+  if (!result.ok) throw new CliError(result.stderr || "Could not determine current branch.");
+  const branch = result.stdout.trim();
+  if (!branch) throw new CliError("Detached HEAD. Checkout a branch to suggest a PR title.");
+  return branch;
+}
+
+function branchExists(ref: string): boolean {
+  return command(["git", "rev-parse", "--verify", "--quiet", ref]).ok;
+}
+
+export function resolveBaseBranch(preferred?: string): string {
+  if (preferred?.trim()) {
+    const name = preferred.trim();
+    if (!branchExists(name) && !branchExists(`origin/${name}`))
+      throw new CliError(`Base branch "${name}" not found.`);
+    return name;
+  }
+  const candidates = ["main", "master", "origin/main", "origin/master"];
+  for (const candidate of candidates) {
+    if (branchExists(candidate)) return candidate;
+  }
+  const originHead = command(["git", "symbolic-ref", "refs/remotes/origin/HEAD"]);
+  if (originHead.ok) {
+    const ref = originHead.stdout.trim().replace(/^refs\/remotes\//, "");
+    if (ref && branchExists(ref)) return ref;
+  }
+  throw new CliError("Could not detect a base branch. Pass --base <branch> (e.g. --base main).");
+}
+
+export function getBranchCommits(base: string, limit = 50): BranchCommit[] {
+  const result = command([
+    "git",
+    "log",
+    `${base}..HEAD`,
+    `--max-count=${limit}`,
+    "--pretty=format:%H%x1f%s%x1f%b%x1e",
+    "--no-decorate",
+  ]);
+  if (!result.ok) throw new CliError(result.stderr || `Could not read commits for ${base}..HEAD.`);
+  if (!result.stdout.trim()) return [];
+  return result.stdout
+    .split("\x1e")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [hash = "", subject = "", body = ""] = entry.split("\x1f");
+      return { hash: hash.trim(), subject: subject.trim(), body: body.trim() };
+    })
+    .filter((entry) => entry.hash || entry.subject);
+}
+
+export function getBranchHistory(baseOverride?: string): BranchHistory {
+  const current = getCurrentBranch();
+  const base = resolveBaseBranch(baseOverride);
+  if (current === base || current === base.replace(/^origin\//, ""))
+    throw new CliError(
+      `Already on base branch "${current}". Checkout a feature branch to suggest a PR title.`,
+    );
+  const commits = getBranchCommits(base);
+  if (!commits.length)
+    throw new CliError(
+      `No commits found between "${base}" and "${current}". Push branch commits first.`,
+    );
+  const filesResult = command(["git", "diff", "--name-only", `${base}...HEAD`]);
+  if (!filesResult.ok) throw new CliError(filesResult.stderr || "Could not read branch files.");
+  const allFiles = filesResult.stdout.split("\n").filter(Boolean);
+  const files = allFiles.filter((f) => !isLockFile(f) && !isBinaryFile(f));
+  const statResult = command(["git", "diff", "--stat", `${base}...HEAD`]);
+  const stat = statResult.ok ? statResult.stdout : "";
+  const diffResult = command([
+    "git",
+    "diff",
+    `${base}...HEAD`,
+    "--no-ext-diff",
+    "--diff-algorithm=minimal",
+    "-U0",
+    "--",
+  ]);
+  if (!diffResult.ok) throw new CliError(diffResult.stderr || "Could not read branch diff.");
+  return { current, base, commits, files, stat, diff: diffResult.stdout };
+}

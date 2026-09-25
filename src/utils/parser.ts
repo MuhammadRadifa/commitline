@@ -64,6 +64,84 @@ export function isPlaceholderCommit(message: string): boolean {
   return false;
 }
 
+export type PrSuggestion = { title: string; body: string };
+
+function cleanTitle(value: string): string {
+  return stripReasoning(
+    value
+      .trim()
+      .replace(/^```(?:\w+)?\s*|```$/g, "")
+      .trim(),
+  ).trim();
+}
+
+function cleanBody(value: string): string {
+  return value
+    .trim()
+    .replace(/^```(?:markdown|md)?\s*|```$/g, "")
+    .trim();
+}
+
+function suggestionFromObject(obj: Record<string, unknown>): PrSuggestion | undefined {
+  const rawTitle =
+    obj.pr_title ?? obj.title ?? obj.subject ?? obj.message_commits ?? obj.message ?? obj.commit;
+  const rawBody = obj.pr_body ?? obj.body ?? obj.description;
+  const title = typeof rawTitle === "string" ? cleanTitle(rawTitle) : "";
+  const body = typeof rawBody === "string" ? cleanBody(rawBody) : "";
+  if (!title || isPlaceholderCommit(title)) return undefined;
+  return { title, body };
+}
+
+export function prSuggestionFromResponse(message: string): PrSuggestion | undefined {
+  const cleaned = message
+    .trim()
+    .replace(/^```(?:\w+)?\s*|```$/g, "")
+    .trim();
+  if (!cleaned) return undefined;
+
+  const parsed = (() => {
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      return undefined;
+    }
+  })();
+  if (parsed && typeof parsed === "object") {
+    const suggestion = suggestionFromObject(parsed as Record<string, unknown>);
+    if (suggestion) return suggestion;
+  }
+
+  const embeddedJson = cleaned.match(
+    /\{\s*"(?:pr_title|pr_body|title|body|subject|description|message_commits|message|commit)"\s*:\s*"(?:[^"\\]|\\.)*"(?:\s*,\s*"(?:pr_title|pr_body|title|body|subject|description|message_commits|message|commit)"\s*:\s*"(?:[^"\\]|\\.)*")*\s*\}/,
+  );
+  if (embeddedJson) {
+    try {
+      const suggestion = suggestionFromObject(JSON.parse(embeddedJson[0]));
+      if (suggestion) return suggestion;
+    } catch {}
+  }
+
+  const titleMatch = cleaned.match(/^(?:pr[_\s-]?title|title|subject)\s*:\s*(.+)$/im);
+  const bodyMatch = cleaned.match(/^(?:pr[_\s-]?body|body|description)\s*:\s*([\s\S]+)$/im);
+  if (titleMatch?.[1]?.trim()) {
+    const title = cleanTitle(titleMatch[1]);
+    if (title && !isPlaceholderCommit(title)) {
+      return { title, body: bodyMatch?.[1] ? cleanBody(bodyMatch[1]) : "" };
+    }
+  }
+
+  const lines = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !isReasoningLine(l));
+  if (!lines.length) return undefined;
+  const [first = "", ...rest] = lines;
+  const title = cleanTitle(first.replace(/^(title|subject)\s*:\s*/i, ""));
+  if (!title || isPlaceholderCommit(title) || title.length > 120) return undefined;
+  return { title, body: cleanBody(rest.join("\n")) };
+}
+
 export function commitMessageFromResponse(
   message: string,
   typesOrConvention?: string[] | Pick<Convention, "types">,
